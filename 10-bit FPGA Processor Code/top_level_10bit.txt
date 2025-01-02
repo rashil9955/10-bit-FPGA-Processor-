@@ -1,0 +1,112 @@
+module top_level_10bit (
+    input logic [9:0] Raw_Data_From_Switches,
+    input logic Clock_50MHz,
+    input logic Peek_Button,
+    input logic Clock_Button,
+
+    output logic [9:0] LED_B_Data_Bus,          // Shows current data bus values on LEDs
+    output logic [6:0] DHEX0,                   // First display showing current data bus value
+    output logic [6:0] DHEX1,                   // Second display showing current data bus value
+    output logic [6:0] DHEX2,                   // Third display showing current data bus value
+    output logic [6:0] THEX_Current_Timestep,   // Shows which step we're on
+    output logic LED_D_Done
+);
+
+logic Extrn_Enable_Signal;                      // Tells when to accept external data
+logic [9:0] Instruction_From_IR;                // Current instruction being processed
+logic [1:0] Timestep_2_bits;                    // Keeps track of which step we're on
+wire [9:0] Shared_Data_Bus;                     // Main data highway between components
+logic [9:0] Q1_REG_Read_From_Register_File;
+logic Debounced_Clock;                          // Clean clock signal without noise
+logic IR_Enable;                                // Controls when to load new instructions
+logic [1:0] Data_2_bits;                        // Last two bits of the data bus
+logic Debounced_Peek;
+logic Clear_Signal;                             // Resets the instruction register and output
+
+// Handles all input processing and cleaning
+inputlogic inputLogicModule( .RawData(Raw_Data_From_Switches), .Peek_key(Peek_Button), .CLK_50MHz(Clock_50MHz), 
+									  .RawCLK(Clock_Button), .Extrn_Enable(Extrn_Enable_Signal), .data(Shared_Data_Bus),
+									  .low2bit(Data_2_bits), .CLKb(Debounced_Clock), .PeeKb(Debounced_Peek));
+
+// Keeps track of which step we're on
+upcount2 countermodule ( .CLR (Clear_Signal), .CLKb (Debounced_Clock), .CNT (Timestep_2_bits));
+
+// Holds the current instruction being executed
+reg10 instructionRegister ( .D(Shared_Data_Bus), .EN (IR_Enable), .CLKb (Debounced_Clock), .Q(Instruction_From_IR));
+
+logic ENW_ENW;
+logic [1:0] Rin_WRA;                            
+logic [1:0] Rout_RDA0;
+logic ENR_ENR0;
+
+logic Ain_Ain;                                  // Controls saving data to ALU input A
+logic Gin_Gin;                                  // Controls saving data to ALU input G
+logic Gout_Gout;                                // Controls reading data from ALU output G
+logic [3:0] ALUcont_FN;                         // Picks which operation ALU should do
+
+logic EN_RAM_to_BUS;                            // Allows reading from RAM
+logic EN_BUS_to_RAM;                            // Allows writing to RAM
+logic EN_Address_Register_Read_from_BUS;        // Controls address register updates
+
+// Brain of the system - controls all operations
+controller controllerModule(
+    .INST(Instruction_From_IR),
+    .T(Timestep_2_bits),
+    .IMM(Shared_Data_Bus),
+
+    // Register file control signals
+    .ENW(ENW_ENW),
+    .Rin(Rin_WRA),
+    .Rout(Rout_RDA0),
+    .ENR(ENR_ENR0),
+
+    // ALU control signals
+    .Ain(Ain_Ain),
+    .Gin(Gin_Gin),
+    .Gout(Gout_Gout),
+    .ALUcont(ALUcont_FN),
+
+    // General control signals
+    .Ext(Extrn_Enable_Signal),
+    .IRin(IR_Enable),
+    .Clr(Clear_Signal),
+
+    // Memory control signals
+    .RAM_read_from_RAM(EN_RAM_to_BUS),
+    .RAM_write_to_RAM(EN_BUS_to_RAM),
+    .EN_AddressRegRead (EN_Address_Register_Read_from_BUS)
+);
+
+// Stores and manages register values
+registerFile registerFileModule (
+    .D (Shared_Data_Bus),
+    .ENR0(ENR_ENR0),
+    .ENR1(ENR1_1bit),
+    .CLKb(Debounced_Clock),
+    .ENW (ENW_ENW),
+    .WRA(Rin_WRA),
+    .RDA0(Rout_RDA0),
+    .RDA1(Data_2_bits),
+    .Q0(Shared_Data_Bus),
+    .Q1(Q1_REG_Read_From_Register_File)
+);
+
+// Handles all memory operations
+ram_1024x10 ramModule (
+    .clk (Debounced_Clock),
+    .EN_write_to_RAM (EN_BUS_to_RAM),
+    .EN_read_from_RAM (EN_RAM_to_BUS),
+    .data_in (Shared_Data_Bus),
+    .address (Shared_Data_Bus),
+    .EN_AddressRegRead (EN_Address_Register_Read_from_BUS),
+    .data_out (Shared_Data_Bus)
+); 
+
+// Does all calculations and operations
+ALU multistageALU ( .OP (Shared_Data_Bus), .Ain (Ain_Ain), .Gin (Gin_Gin), .Gout (Gout_Gout), .FN (ALUcont_FN), .CLKb (Debounced_Clock), .RES (Shared_Data_Bus) );
+
+// Manages all output displays and indicators
+outputlogic outputLogicModule( .BUS(Shared_Data_Bus), .REG(Q1_REG_Read_From_Register_File), .TIME(Timestep_2_bits), .DONE(Clear_Signal), .Pkb(Debounced_Peek),
+		.LED_B(LED_B_Data_Bus), .DHEX0(DHEX0), .DHEX1(DHEX1), .DHEX2(DHEX2), .THEX(THEX_Current_Timestep ), .LED_D(LED_D_Done));
+
+endmodule

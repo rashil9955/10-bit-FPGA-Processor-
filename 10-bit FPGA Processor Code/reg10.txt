@@ -1,0 +1,16 @@
+module reg10 (
+    input logic [9:0] D,    // Value to store
+    input logic EN,         // Allow updates
+    input logic CLKb,       // Clock tick
+    output logic [9:0] Q    // Stored value
+);
+
+// Update stored value when enabled
+always_ff @(negedge CLKb) begin
+    if (EN) begin
+        Q <= D;    // Save new value
+    end
+    // Keep old value if not enabled
+end
+
+endmodule

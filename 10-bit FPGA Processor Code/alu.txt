@@ -1,0 +1,76 @@
+module ALU (
+    input logic [9:0] OP,       // Input value from data bus
+    input logic [3:0] FN,       // Which operation to perform
+    input logic Ain,            // Save input to A register
+    input logic Gin,            // Save result to G register
+    input logic Gout,           // Put G register on output
+    input logic CLKb,           // Clock signal
+    output logic [9:0] RES      // Output value
+);
+
+parameter 
+    LOAD = 4'b0000, // Copy input directly to output
+    COPY = 4'b0001, // Move value from one register to another
+    ADD = 4'b0010,  // Add two numbers
+    SUB = 4'b0011,  // Subtract second number from first
+    INV = 4'b0100,  // Negate a number (two's complement)
+    FLIP = 4'b0101, // Flip all bits
+    AND = 4'b0110,  // Bitwise AND
+    OR = 4'b0111,   // Bitwise OR
+    XOR = 4'b1000,  // Bitwise XOR
+    LSL = 4'b1001,  // Shift left by given number of bits
+    LSR = 4'b1010,  // Shift right by given number of bits
+    ASR = 4'b1011,  // Shift right keeping sign bit
+    ADDI = 4'b1100, // Add immediate value
+    SUBI = 4'b1101; // Subtract immediate value
+
+logic [9:0] A;                  // First input register
+logic [9:0] Result_from_ALU;    // Temporary result storage
+logic [9:0] G;                  // Output register
+
+// Save input value to A register
+always_ff @(negedge CLKb) begin
+    if (Ain) begin
+        A <= OP;
+    end
+end
+
+// Calculate result based on operation
+always_comb begin
+    case (FN)
+        LOAD:  Result_from_ALU = OP;        // Pass through
+        COPY:  Result_from_ALU = A;         // Copy A
+        ADD:   Result_from_ALU = A + OP;    // Add
+        SUB:   Result_from_ALU = A - OP;    // Subtract
+        INV:   Result_from_ALU = (~OP) + 1; // Negate
+        FLIP:  Result_from_ALU = ~OP;       // Flip bits
+        AND:   Result_from_ALU = A & OP;    // AND
+        OR:    Result_from_ALU = A | OP;    // OR
+        XOR:   Result_from_ALU = A ^ OP;    // XOR
+        LSL:   Result_from_ALU = A << OP;   // Shift left
+        LSR:   Result_from_ALU = A >> OP;   // Shift right
+        ASR:   Result_from_ALU = $signed(A) >>> OP;  // Shift right with sign
+        ADDI:  Result_from_ALU = A + OP;    // Add immediate
+        SUBI:  Result_from_ALU = A - OP;    // Subtract immediate
+      default: Result_from_ALU = 10'b0;     // Return 0 for invalid operations
+    endcase
+end
+
+// Save result to G register
+always_ff @(negedge CLKb) begin
+    if (Gin) begin
+        G <= Result_from_ALU;
+    end
+end
+
+// Control output
+always_comb begin
+    if (Gout) begin
+        RES = G;        // Output result when enabled
+    end
+    else begin
+        RES = 10'bz;    // High impedance when disabled
+    end
+end
+
+endmodule

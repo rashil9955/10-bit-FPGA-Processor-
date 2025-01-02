@@ -1,0 +1,315 @@
+module controller(
+    input logic [9:0] INST,     // Current instruction being processed
+    input logic [1:0] T,        // Current step number (0-3)
+
+    output logic [9:0] IMM,     // Immediate value to put on the bus
+    output logic [1:0] Rin,     // Which register to write to
+    output logic [1:0] Rout,    // Which register to read from
+    output logic ENW,           // Allow writing to registers
+    output logic ENR,           // Allow reading from registers
+    output logic Ain,           // Save data to ALU's A input
+    output logic Gin,           // Save result to ALU's G register
+    output logic Gout,          // Put G register value on the bus
+    output logic [3:0] ALUcont, // Which ALU operation to perform
+    output logic Ext,           // Allow external input
+    output logic IRin,          // Save new instruction
+    output logic Clr,           // Reset step counter
+
+    // Memory control
+    output logic RAM_read_from_RAM,  // Read from memory
+    output logic RAM_write_to_RAM,   // Write to memory
+    output logic EN_AddressRegRead   // Load memory address
+);
+
+parameter 
+    LOAD = 4'b0000,    // Put a value into Rx
+    COPY = 4'b0001,    // Copy Ry into Rx
+    ADD = 4'b0010,     // Add Rx and Ry, put result in Rx
+    SUB = 4'b0011,     // Subtract Ry from Rx, put result in Rx
+    INV = 4'b0100,     // Negate Ry and put in Rx
+    FLIP = 4'b0101,    // Flip all bits of Ry and put in Rx
+    AND = 4'b0110,     // Bitwise AND of Rx and Ry into Rx
+    OR = 4'b0111,      // Bitwise OR of Rx and Ry into Rx
+    XOR = 4'b1000,     // Bitwise XOR of Rx and Ry into Rx
+    LSL = 4'b1001,     // Shift Rx left by Ry bits
+    LSR = 4'b1010,     // Shift Rx right by Ry bits
+    ASR = 4'b1011,     // Arithmetic shift Rx right by Ry bits
+    ADDI = 4'b1100,    // Add immediate value to Rx
+    SUBI = 4'b1101;    // Subtract immediate value from Rx
+
+always_comb begin
+    // Start with everything off
+    IMM = 10'bzzzzzzzzzz;
+    Rin = 2'b0;
+    Rout = 2'b0;
+    ENW = 1'b0;
+    ENR = 1'b0;
+    Ain = 1'b0;
+    Gin = 1'b0;
+    Gout = 1'b0;
+    ALUcont = 4'bzzzz;
+    Ext = 1'b0;
+    IRin = 1'b0;
+    Clr = 1'b0;
+    EN_AddressRegRead = 1'b0;
+    RAM_read_from_RAM = 1'b0;
+    RAM_write_to_RAM = 1'b0;
+
+    // Step 0: Get new instruction from input
+    if (T == 2'b00) begin
+        Ext = 1;    // Allow input
+        IRin = 1;   // Save instruction
+
+    // Step 1: Start processing instruction
+    end else if (T == 2'b01) begin
+        // LOAD: Get data from input
+        if (INST[1:0] == 2'b00 && INST[5:2] == LOAD) begin
+            Ext = 1;            // Allow input
+            Rin = INST[9:8];    // Choose register
+            ENW = 1;            // Enable writing
+            Clr = 1;            // Done, reset counter
+        end
+        
+        // COPY: Move data between registers
+        else if (INST[9:8] == 2'b00 && INST[3:0] == 4'b0001) begin
+            Rout = INST[5:4];   // Source register
+            ENR = 1;            // Enable reading
+            Rin = INST[7:6];    // Destination register
+            ENW = 1;            // Enable writing
+            Clr = 1;            // Done, reset counter
+        end
+
+        // LDR: Load from memory
+        else if (INST[9:8] == 2'b00 && INST[3:0] == 4'b1100) begin
+            Rout = INST[5:4];    // Get address from register
+            ENR = 1;             // Enable reading
+            EN_AddressRegRead = 1; // Save address
+        end
+
+        // STR: Store to memory
+        else if (INST[9:8] == 2'b00 && INST[3:0] == 4'b1101) begin
+            Rout = INST[7:6];     // Get data from register
+            ENR = 1;              // Enable reading
+            EN_AddressRegRead = 1; // Save address
+        end
+
+        // ALU operations: Get first operand
+        else begin
+            Rout = INST[7:6];   // First operand register
+            ENR = 1;            // Enable reading
+            Ain = 1;            // Save to ALU
+        end
+
+    // Step 2: Continue processing
+    end else if (T == 2'b10) begin
+        // Memory and ALU operations
+        if (INST[9:8] == 2'b00) begin
+            // LDR: Read from memory
+            if (INST[3:0] == 4'b1100) begin
+                RAM_read_from_RAM = 1;  // Read memory
+                Rin = INST[7:6];        // Choose register
+                ENW = 1;                // Enable writing
+                Clr = 1;                // Done
+
+            // STR: Write to memory
+            end else if (INST[3:0] == 4'b1101) begin
+                RAM_write_to_RAM = 1;   // Write memory
+                Rout = INST[5:4];       // Get data
+                ENR = 1;                // Enable reading
+                Clr = 1;                // Done
+            
+            // ALU: Get second operand
+            end else begin
+                Rout = INST[5:4];     // Second operand
+                ENR = 1;              // Enable reading
+                ALUcont = INST[3:0];  // Choose operation
+                Gin = 1;              // Save result
+            end
+
+        // ADDI: Add immediate value
+        end else if (INST[9:8] == 2'b10) begin 
+            IMM[5:0] = INST[5:0];  // Get immediate value
+            IMM[9:6] = 4'b0000;    // Clear upper bits
+            ALUcont = 4'b0010;     // Addition
+            Gin = 1;               // Save result
+
+        // SUBI: Subtract immediate value
+        end else if (INST[9:8] == 11) begin
+            IMM[5:0] = INST[5:0];   // Get immediate value
+            IMM[10:6] = 4'b0000;    // Clear upper bits
+            ALUcont = 4'b0011;      // Subtraction
+            Gin = 1;                // Save result
+        end
+    end
+
+    // Step 3: Save results
+    else if (T == 2'b11) begin
+        Clr = 1;    // Reset counter by default
+
+        // Save ALU result if needed
+        if (INST[9:8] == 2'b00 && INST[3:0] != 4'b1100 && INST[3:0] != 4'b1101) begin
+            Gout = 1;              // Output result
+            Rin = INST[7:6];       // Choose register
+            ENW = 1;               // Enable writing
+        end
+    end
+end
+
+endmodulemodule controller(
+    input logic [9:0] INST,     // Current instruction being processed
+    input logic [1:0] T,        // Current step number (0-3)
+
+    output logic [9:0] IMM,     // Immediate value to put on the bus
+    output logic [1:0] Rin,     // Which register to write to
+    output logic [1:0] Rout,    // Which register to read from
+    output logic ENW,           // Allow writing to registers
+    output logic ENR,           // Allow reading from registers
+    output logic Ain,           // Save data to ALU's A input
+    output logic Gin,           // Save result to ALU's G register
+    output logic Gout,          // Put G register value on the bus
+    output logic [3:0] ALUcont, // Which ALU operation to perform
+    output logic Ext,           // Allow external input
+    output logic IRin,          // Save new instruction
+    output logic Clr,           // Reset step counter
+
+    // Memory control
+    output logic RAM_read_from_RAM,  // Read from memory
+    output logic RAM_write_to_RAM,   // Write to memory
+    output logic EN_AddressRegRead   // Load memory address
+);
+
+parameter 
+    LOAD = 4'b0000,    // Put a value into Rx
+    COPY = 4'b0001,    // Copy Ry into Rx
+    ADD = 4'b0010,     // Add Rx and Ry, put result in Rx
+    SUB = 4'b0011,     // Subtract Ry from Rx, put result in Rx
+    INV = 4'b0100,     // Negate Ry and put in Rx
+    FLIP = 4'b0101,    // Flip all bits of Ry and put in Rx
+    AND = 4'b0110,     // Bitwise AND of Rx and Ry into Rx
+    OR = 4'b0111,      // Bitwise OR of Rx and Ry into Rx
+    XOR = 4'b1000,     // Bitwise XOR of Rx and Ry into Rx
+    LSL = 4'b1001,     // Shift Rx left by Ry bits
+    LSR = 4'b1010,     // Shift Rx right by Ry bits
+    ASR = 4'b1011,     // Arithmetic shift Rx right by Ry bits
+    ADDI = 4'b1100,    // Add immediate value to Rx
+    SUBI = 4'b1101;    // Subtract immediate value from Rx
+
+always_comb begin
+    // Start with everything off
+    IMM = 10'bzzzzzzzzzz;
+    Rin = 2'b0;
+    Rout = 2'b0;
+    ENW = 1'b0;
+    ENR = 1'b0;
+    Ain = 1'b0;
+    Gin = 1'b0;
+    Gout = 1'b0;
+    ALUcont = 4'bzzzz;
+    Ext = 1'b0;
+    IRin = 1'b0;
+    Clr = 1'b0;
+    EN_AddressRegRead = 1'b0;
+    RAM_read_from_RAM = 1'b0;
+    RAM_write_to_RAM = 1'b0;
+
+    // Step 0: Get new instruction from input
+    if (T == 2'b00) begin
+        Ext = 1;    // Allow input
+        IRin = 1;   // Save instruction
+
+    // Step 1: Start processing instruction
+    end else if (T == 2'b01) begin
+        // LOAD: Get data from input
+        if (INST[1:0] == 2'b00 && INST[5:2] == LOAD) begin
+            Ext = 1;            // Allow input
+            Rin = INST[9:8];    // Choose register
+            ENW = 1;            // Enable writing
+            Clr = 1;            // Done, reset counter
+        end
+        
+        // COPY: Move data between registers
+        else if (INST[9:8] == 2'b00 && INST[3:0] == 4'b0001) begin
+            Rout = INST[5:4];   // Source register
+            ENR = 1;            // Enable reading
+            Rin = INST[7:6];    // Destination register
+            ENW = 1;            // Enable writing
+            Clr = 1;            // Done, reset counter
+        end
+
+        // LDR: Load from memory
+        else if (INST[9:8] == 2'b00 && INST[3:0] == 4'b1100) begin
+            Rout = INST[5:4];    // Get address from register
+            ENR = 1;             // Enable reading
+            EN_AddressRegRead = 1; // Save address
+        end
+
+        // STR: Store to memory
+        else if (INST[9:8] == 2'b00 && INST[3:0] == 4'b1101) begin
+            Rout = INST[7:6];     // Get data from register
+            ENR = 1;              // Enable reading
+            EN_AddressRegRead = 1; // Save address
+        end
+
+        // ALU operations: Get first operand
+        else begin
+            Rout = INST[7:6];   // First operand register
+            ENR = 1;            // Enable reading
+            Ain = 1;            // Save to ALU
+        end
+
+    // Step 2: Continue processing
+    end else if (T == 2'b10) begin
+        // Memory and ALU operations
+        if (INST[9:8] == 2'b00) begin
+            // LDR: Read from memory
+            if (INST[3:0] == 4'b1100) begin
+                RAM_read_from_RAM = 1;  // Read memory
+                Rin = INST[7:6];        // Choose register
+                ENW = 1;                // Enable writing
+                Clr = 1;                // Done
+
+            // STR: Write to memory
+            end else if (INST[3:0] == 4'b1101) begin
+                RAM_write_to_RAM = 1;   // Write memory
+                Rout = INST[5:4];       // Get data
+                ENR = 1;                // Enable reading
+                Clr = 1;                // Done
+            
+            // ALU: Get second operand
+            end else begin
+                Rout = INST[5:4];     // Second operand
+                ENR = 1;              // Enable reading
+                ALUcont = INST[3:0];  // Choose operation
+                Gin = 1;              // Save result
+            end
+
+        // ADDI: Add immediate value
+        end else if (INST[9:8] == 2'b10) begin 
+            IMM[5:0] = INST[5:0];  // Get immediate value
+            IMM[9:6] = 4'b0000;    // Clear upper bits
+            ALUcont = 4'b0010;     // Addition
+            Gin = 1;               // Save result
+
+        // SUBI: Subtract immediate value
+        end else if (INST[9:8] == 11) begin
+            IMM[5:0] = INST[5:0];   // Get immediate value
+            IMM[10:6] = 4'b0000;    // Clear upper bits
+            ALUcont = 4'b0011;      // Subtraction
+            Gin = 1;                // Save result
+        end
+    end
+
+    // Step 3: Save results
+    else if (T == 2'b11) begin
+        Clr = 1;    // Reset counter by default
+
+        // Save ALU result if needed
+        if (INST[9:8] == 2'b00 && INST[3:0] != 4'b1100 && INST[3:0] != 4'b1101) begin
+            Gout = 1;              // Output result
+            Rin = INST[7:6];       // Choose register
+            ENW = 1;               // Enable writing
+        end
+    end
+end
+
+endmodule

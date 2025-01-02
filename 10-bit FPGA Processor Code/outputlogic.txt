@@ -1,0 +1,90 @@
+module outputlogic(
+    input logic [9:0] BUS,      // Main data bus value
+    input logic [9:0] REG,      // Value from register
+    input logic [1:0] TIME,     // Current step number
+    input logic DONE,           // Operation complete signal
+    input logic Pkb,            // Peek button state
+
+    output logic [9:0] LED_B,   // Shows data on LEDs
+    output logic [6:0] DHEX0,   // First display digit
+    output logic [6:0] DHEX1,   // Second display digit
+    output logic [6:0] DHEX2,   // Third display digit
+    output logic [6:0] THEX,    // Shows current step
+    output logic LED_D          // Shows when done
+);  
+
+    // Convert current step to display format
+    assign THEX = time_to_7seg(TIME);
+
+    // Show either bus or register value on displays
+    logic [20:0] hex_value;     // All three digits combined
+    assign hex_value = value_to_7seg(Pkb ? BUS : REG);
+
+    // Split value into individual digits
+    assign DHEX0 = hex_value[6:0];     // Rightmost digit
+    assign DHEX1 = hex_value[13:7];    // Middle digit
+    assign DHEX2 = hex_value[20:14];   // Leftmost digit
+
+    // Turn on LED when operation completes
+    assign LED_D = ~DONE;              // Inverted because LEDs are active low
+
+    // Show current bus value on LED strip
+    assign LED_B = BUS;
+
+endmodule
+
+// Convert step number (0-3) to display pattern
+function [6:0] time_to_7seg(input [1:0] processor_time);
+    begin
+        case (processor_time)   
+            2'b00: time_to_7seg = 7'b1000000;   // 0
+            2'b01: time_to_7seg = 7'b1111001;   // 1
+            2'b10: time_to_7seg = 7'b0100100;   // 2
+            2'b11: time_to_7seg = 7'b0110000;   // 3
+            default: time_to_7seg = 7'b1111111;  // Blank
+        endcase
+    end
+endfunction
+
+// Convert 10-bit number to three display digits
+function [20:0] value_to_7seg(input [9:0] value);
+    logic [3:0] digit[2:0];               // Split into three 4-bit chunks
+    begin
+        // Break number into hex digits
+        digit[0] = value % 16;            // Ones place
+        digit[1] = (value / 16) % 16;     // Sixteens place
+        digit[2] = value / 256;           // 256's place
+
+        // Convert each digit and combine
+        value_to_7seg = {
+            digit_to_7seg(digit[2]),      // Leftmost
+            digit_to_7seg(digit[1]),      // Middle
+            digit_to_7seg(digit[0])       // Rightmost
+        };
+    end
+endfunction
+
+// Convert single hex digit to display pattern
+function [6:0] digit_to_7seg(input [3:0] digit);
+    begin
+        case (digit)
+            4'b0000: digit_to_7seg = 7'b1000000;   // 0
+            4'b0001: digit_to_7seg = 7'b1111001;   // 1
+            4'b0010: digit_to_7seg = 7'b0100100;   // 2
+            4'b0011: digit_to_7seg = 7'b0110000;   // 3
+            4'b0100: digit_to_7seg = 7'b0011001;   // 4
+            4'b0101: digit_to_7seg = 7'b0010010;   // 5
+            4'b0110: digit_to_7seg = 7'b0000010;   // 6
+            4'b0111: digit_to_7seg = 7'b1111000;   // 7
+            4'b1000: digit_to_7seg = 7'b0000000;   // 8
+            4'b1001: digit_to_7seg = 7'b0010000;   // 9
+            4'b1010: digit_to_7seg = 7'b0001000;   // A
+            4'b1011: digit_to_7seg = 7'b0000011;   // B
+            4'b1100: digit_to_7seg = 7'b1000110;   // C
+            4'b1101: digit_to_7seg = 7'b0100001;   // D
+            4'b1110: digit_to_7seg = 7'b0000110;   // E
+            4'b1111: digit_to_7seg = 7'b0001110;   // F
+            default: digit_to_7seg = 7'b1111111;   // Blank
+        endcase
+    end
+endfunction

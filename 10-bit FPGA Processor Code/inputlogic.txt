@@ -1,0 +1,30 @@
+module inputlogic(
+    input logic [9:0] RawData,      // Data from switches
+    input logic Peek_key,           // Raw peek button input
+    input logic CLK_50MHz,          // Main clock
+    input logic RawCLK,             // Raw clock button input
+    input Extrn_Enable,             // Control signal for external input
+    output logic [9:0] data,        // Processed data output
+    output logic [1:0] low2bit,     // Bottom two bits of input
+    output logic CLKb,              // Clean clock signal
+    output logic PeeKb              // Clean peek signal
+);
+
+// Clean up button inputs to remove noise
+debouncer peek_debouncer ( .A_noisy(Peek_key), .CLK50M(CLK_50MHz), .A(PeeKb) );
+debouncer clk_debouncer (.A_noisy(RawCLK), .CLK50M(CLK_50MHz), .A(CLKb) );
+
+// Extract last two bits for addressing
+assign low2bit = RawData[1:0];     
+
+// Control when data goes to the bus
+always_comb begin
+    if (Extrn_Enable) begin
+        data = RawData;    // Put data on bus when enabled
+    end
+    else begin
+        data = 10'bz;      // Disconnect from bus when disabled
+    end
+end
+
+endmodule

@@ -1,0 +1,16 @@
+module upcount2 (
+    input logic CLR,        // Reset signal
+    input logic CLKb,       // Clock tick
+    output logic [1:0] CNT  // Current count value
+);
+
+// Count up until reset
+always_ff @(negedge CLKb) begin
+    if (CLR) begin
+        CNT <= 2'b00;      // Start over from zero
+    end else begin
+        CNT <= CNT + 1;    // Add one
+    end
+end
+
+endmodule

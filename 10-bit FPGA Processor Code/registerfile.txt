@@ -1,0 +1,48 @@
+module registerFile (
+    input logic [9:0] D,        // Data to be stored
+    input logic ENW,            // Allow writing to registers
+    input logic ENR0,           // Allow reading to main bus
+    input logic ENR1,           // Allow reading for peek operation
+    input logic CLKb,           // Clock signal
+    input logic [1:0] WRA,      // Which register to write to
+    
+    input logic [1:0] RDA0,     // Which register to read from (main)
+    input logic [1:0] RDA1,     // Which register to read from (peek)
+    output logic [9:0] Q0,      // Main output
+    output logic [9:0] Q1       // Peek output
+);
+
+// Create four 10-bit storage spaces
+logic [9:0] registers[3:0];     
+
+// Start with all registers empty
+initial begin
+    registers[0] = 10'b0;   
+    registers[1] = 10'b0; 
+    registers[2] = 10'b0;
+    registers[3] = 10'b0;
+end
+
+// Store data when requested
+always_ff @(negedge CLKb) begin
+    if (ENW) begin
+        registers[WRA] <= D;    // Save new value
+    end
+end
+
+// Provide data when requested
+always_comb begin
+    if (ENR0) begin
+        Q0 = registers[RDA0];   // Output to main bus
+    end else begin
+        Q0 = 10'bz;            // Disconnect from bus
+    end
+
+    if (ENR1) begin
+        Q1 = registers[RDA1];   // Output for peek
+    end else begin
+        Q1 = 10'bz;            // Disconnect peek
+    end
+end
+
+endmodule
